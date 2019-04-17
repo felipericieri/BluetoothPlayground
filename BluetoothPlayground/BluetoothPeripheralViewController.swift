@@ -14,8 +14,6 @@ import CoreBluetooth
 // HAS the Data (peripheral device, like heart beat measuring device)
 final class BluetoothPeripheralViewController: UIViewController {
     
-    private var peripheralManager: CBPeripheralManager!
-    
     // 1) Use the CLI uuidgen to generate a random UUID
     private let serviceUUID = CBUUID(string: "F38EEBFE-BC74-42A5-B874-59E53AA6A097")
     private let readableCharacteristicUUID = CBUUID(string: "548CCB32-92EC-4DEA-9B72-B7A563A1A06E")
@@ -47,26 +45,61 @@ final class BluetoothPeripheralViewController: UIViewController {
     // 4) SERVICES:
     // 4.1) A PRIMARY service describes the primary functionality of a device
     private lazy var primaryReadableService: CBMutableService = {
-        return CBMutableService(type: serviceUUID, primary: true)
+        let service = CBMutableService(type: serviceUUID, primary: true) // primary is TRUE
+        service.characteristics = [writeableCharacteristic] // adding our characteristics
+        return service
     }()
     
     // 4.2) A SECONDARY service describes a service that is relevant only in the context of another service that has referenced it.
     private lazy var secondaryReadableService: CBMutableService = {
-        return CBMutableService(type: serviceUUID, primary: true)
+        let service = CBMutableService(type: serviceUUID, primary: false) // primary is FALSE
+        service.characteristics = [readableCharacteristic] // adding our characteristics
+        return service
     }()
+    
+    // 5) Last but not least, we need the Manager to coordinate our Peripgerals
+    private var peripheralManager: CBPeripheralManager!
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
-        // Creates and starts the Peripheral Manager
         peripheralManager = CBPeripheralManager(delegate: self, queue: nil, options: nil)
     }
 }
 
 extension BluetoothPeripheralViewController: CBPeripheralManagerDelegate {
     
-    // 2) When you create a peripheral manager, the peripheral manager calls this method
+    // 6) When you create a peripheral manager, the peripheral manager calls this method
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
-        
+        // 6.1) Now we can add our services to our manager
+        peripheralManager.add(primaryReadableService)
+        peripheralManager.add(secondaryReadableService)
+        // 6.2) ... and advertising our services thoughout the bluetooth network!
+        peripheralManager.startAdvertising([
+            // Only two of the keys are supported for peripheral manager objects:  [CBAdvertisementDataLocalNameKey](https://developer.apple.com/documentation/corebluetooth/cbadvertisementdatalocalnamekey)  and  [CBAdvertisementDataServiceUUIDsKey](https://developer.apple.com/documentation/corebluetooth/cbadvertisementdataserviceuuidskey) .
+            CBAdvertisementDataServiceUUIDsKey: [
+                primaryReadableService.uuid,
+                secondaryReadableService.uuid
+            ]
+        ])
+    }
+    
+    // 7) When you call the method to publish your services, the peripheral manager will call this method
+    func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
+        // 7.1) you have the change to handle any errors right away
+        if  let error = error {
+            print("Oops... Peripheral Manager error out: \(error.localizedDescription)")
+            return
+        }
+        // ⚠️ NOTE: After you publish a service and any of its associated characteristics to the peripheral’s database, the service is cached and you can NO LONGER make changes to it
+    }
+    
+    // 8) When you start advertising some of the data on your local peripheral, the peripheral manager calls this method
+    func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
+        // 8.1) you have the change to handle any errors right away
+        if  let error = error {
+            print("Oops... Peripheral Manager error out while advertising: \(error.localizedDescription)")
+            return
+        }
     }
 }
